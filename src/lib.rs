@@ -785,6 +785,15 @@ impl<'a> FrameBuffer<'a> {
         self.buffer
     }
 
+    /// Returns a mutable reference to the buffer.
+    ///
+    /// # Returns
+    ///
+    /// A mutable reference to the buffer.
+    pub fn get_buffer_mut(&mut self) -> &mut [u8] {
+        self.buffer
+    }
+
     /// Clears the frame buffer with the specified color.
     ///
     /// # Arguments
