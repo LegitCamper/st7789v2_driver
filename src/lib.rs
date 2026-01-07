@@ -264,12 +264,20 @@ where
         DELAY: DelayNs,
     {
         self.hard_reset(delay)?;
-        //Set Attributes for Scan Direction
-        if self.sd == VERTICAL {
-            self.write_command(Instruction::MadCtl as u8, &[0x00])?; // Vertical
+
+        // Start with the orientation base bits
+        let mut madctl = if self.sd == VERTICAL {
+            0x00
         } else {
-            self.write_command(Instruction::MadCtl as u8, &[0x78])?; // Horizontal
+            0x70 // Standard Horizontal (MX=1, MV=1) - adjust as needed
+        };
+
+        // If BGR is requested , set Bit 3
+        if !self._rgb {
+            madctl |= 0x08;
         }
+
+        self.write_command(Instruction::MadCtl as u8, &[madctl])?;
 
         //Initalize Display
         //self.write_command(Instruction::MadCtl as u8, &[0x00])?;  //Vertical Screen Direction
@@ -425,30 +433,34 @@ where
         end_x: u16,
         end_y: u16,
     ) -> Result<(), ()> {
-        if self.sd == VERTICAL {
-            self.write_command(Instruction::CaSet as u8, &[])?;
-            self.start_data()?;
-            // Write start and end x-coordinates
-            self.write_data(&start_x.to_be_bytes())?; // Big-endian: splits into two bytes
-            self.write_data(&(end_x - 1).to_be_bytes())?;
-            self.write_command(Instruction::RaSet as u8, &[])?;
-            self.start_data()?;
-            // Write start and end y-coordinates (with a 20 pixel offset)
-            self.write_data(&(start_y + 20).to_be_bytes())?;
-            self.write_data(&(end_y + 20 - 1).to_be_bytes())?;
+        // ST7789 native controller limits
+        const MAX_W: u16 = 240;
+        const MAX_H: u16 = 320;
+
+        let (dx, dy) = if self.sd == VERTICAL {
+            let dx = (MAX_W - self.width as u16) / 2;
+            let dy = (MAX_H - self.height as u16) / 2;
+            (dx, dy)
         } else {
-            self.write_command(Instruction::CaSet as u8, &[])?;
-            self.start_data()?;
-            // Write start and end x-coordinates
-            self.write_data(&(start_x + 20).to_be_bytes())?; // Big-endian: splits into two bytes
-            self.write_data(&(end_x + 20 - 1).to_be_bytes())?;
-            self.write_command(Instruction::RaSet as u8, &[])?;
-            self.start_data()?;
-            // Write start and end y-coordinates (with a 20 pixel offset)
-            self.write_data(&(start_y).to_be_bytes())?;
-            self.write_data(&(end_y - 1).to_be_bytes())?;
-        }
-        self.write_command(0x2C, &[])?;
+            let dx = (MAX_H - self.width as u16) / 2;
+            let dy = (MAX_W - self.height as u16) / 2;
+            (dx, dy)
+        };
+
+        // Column Address Set
+        self.write_command(Instruction::CaSet as u8, &[])?;
+        self.start_data()?;
+        self.write_data(&(start_x + dx).to_be_bytes())?;
+        self.write_data(&(end_x + dx).to_be_bytes())?;
+
+        // Row Address Set
+        self.write_command(Instruction::RaSet as u8, &[])?;
+        self.start_data()?;
+        self.write_data(&(start_y + dy).to_be_bytes())?;
+        self.write_data(&(end_y + dy).to_be_bytes())?;
+
+        // Write to RAM Command
+        self.write_command(Instruction::RamWr as u8, &[])?;
 
         Ok(())
     }
